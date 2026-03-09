@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Datasets (Large files)
+data/*
+!data/.gitkeep
+archives/
+
+# Models (Keep только necessary production models)
+# We want to keep models/ for deployment if they are small enough, 
+# but v2/v3 might be large. v3 is ~800KB so it's fine.
+# We'll ignore the zipped files and raw data.
+nibss_fraud_dataset.zip
+*.log
+
+# IDEs
+.qodo/
+.vscode/
+.idea/
