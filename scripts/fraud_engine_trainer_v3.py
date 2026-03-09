@@ -8,11 +8,14 @@ import joblib
 import os
 from imblearn.over_sampling import SMOTE
 
+# Base directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Configuration
-DATASET_PATH = "/home/izumi/Documents/CODE/Chichi/data/nibss_fraud_dataset.csv"
-MODEL_PATH = "/home/izumi/Documents/CODE/Chichi/models/fraud_engine_model_v3.pkl"
-ENCODER_PATH = "/home/izumi/Documents/CODE/Chichi/models/fraud_engine_encoders.pkl"
-FEATURES_PATH = "/home/izumi/Documents/CODE/Chichi/models/fraud_engine_features.pkl"
+DATASET_PATH = os.path.join(BASE_DIR, "data", "nibss_fraud_dataset.csv")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
+ENCODER_PATH = os.path.join(BASE_DIR, "models", "fraud_engine_encoders.pkl")
+FEATURES_PATH = os.path.join(BASE_DIR, "models", "fraud_engine_features.pkl")
 
 
 def train_fraud_engine_v3():

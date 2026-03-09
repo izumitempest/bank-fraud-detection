@@ -5,14 +5,17 @@ import joblib
 import os
 import pandas as pd
 
+# Base directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Configuration - Alert Classifier
-ALERT_MODEL = "/home/izumi/Documents/CODE/Chichi/models/alert_classifier_v2.pkl"
-ALERT_VECTORIZER = "/home/izumi/Documents/CODE/Chichi/models/tfidf_vectorizer_v2.pkl"
+ALERT_MODEL = os.path.join(BASE_DIR, "models", "alert_classifier_v2.pkl")
+ALERT_VECTORIZER = os.path.join(BASE_DIR, "models", "tfidf_vectorizer_v2.pkl")
 
 # Configuration - Fraud Engine (NIBSS)
-FRAUD_MODEL = "/home/izumi/Documents/CODE/Chichi/models/fraud_engine_model_v3.pkl"
-FRAUD_ENCODERS = "/home/izumi/Documents/CODE/Chichi/models/fraud_engine_encoders.pkl"
-FRAUD_FEATURES = "/home/izumi/Documents/CODE/Chichi/models/fraud_engine_features.pkl"
+FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
+FRAUD_ENCODERS = os.path.join(BASE_DIR, "models", "fraud_engine_encoders.pkl")
+FRAUD_FEATURES = os.path.join(BASE_DIR, "models", "fraud_engine_features.pkl")
 FRAUD_THRESHOLD = 0.20  # Optimized for ~82% recall
 
 app = FastAPI(title="Chichi Fraud Detection API")

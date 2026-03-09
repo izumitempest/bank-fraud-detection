@@ -2,9 +2,12 @@ import random
 import csv
 import os
 
+# Base directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Configuration
 NUM_SAMPLES_PER_CATEGORY = 200
-OUTPUT_FILE = "/home/izumi/Documents/CODE/Chichi/data/alerts_dataset_v2.csv"
+OUTPUT_FILE = os.path.join(BASE_DIR, "data", "alerts_dataset_v2.csv")
 
 # Banks and common data
 BANKS = [

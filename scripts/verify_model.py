@@ -1,9 +1,12 @@
 import joblib
 import os
 
+# Base directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Configuration
-MODEL_PATH = "/home/izumi/Documents/CODE/Chichi/models/alert_classifier_v2.pkl"
-VECTORIZER_PATH = "/home/izumi/Documents/CODE/Chichi/models/tfidf_vectorizer_v2.pkl"
+MODEL_PATH = os.path.join(BASE_DIR, "models", "alert_classifier_v2.pkl")
+VECTORIZER_PATH = os.path.join(BASE_DIR, "models", "tfidf_vectorizer_v2.pkl")
 
 
 def predict_alert(text):

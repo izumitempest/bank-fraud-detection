@@ -6,10 +6,13 @@ from sklearn.metrics import classification_report
 import joblib
 import os
 
+# Base directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Configuration
-DATASET_PATH = "/home/izumi/Documents/CODE/Chichi/data/alerts_dataset_v2.csv"
-MODEL_PATH = "/home/izumi/Documents/CODE/Chichi/models/alert_classifier_v2.pkl"
-VECTORIZER_PATH = "/home/izumi/Documents/CODE/Chichi/models/tfidf_vectorizer_v2.pkl"
+DATASET_FILE = os.path.join(BASE_DIR, "data", "alerts_dataset_v2.csv")
+MODEL_FILE = os.path.join(BASE_DIR, "models", "alert_classifier_v2.pkl")
+VECTORIZER_FILE = os.path.join(BASE_DIR, "models", "tfidf_vectorizer_v2.pkl")
 
 
 def train_model():
