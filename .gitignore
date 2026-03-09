@@ -10,10 +10,11 @@ data/*
 !data/.gitkeep
 archives/
 
-# Models (Keep только necessary production models)
-# We want to keep models/ for deployment if they are small enough, 
-# but v2/v3 might be large. v3 is ~800KB so it's fine.
-# We'll ignore the zipped files and raw data.
+# Models (Keep only necessary production models)
+# v3 is ~800KB, v2 is ~600KB. Total < 2MB, safe for git.
+!models/*.pkl
+
+# Ignore specific large items if they exist
 nibss_fraud_dataset.zip
 *.log
 

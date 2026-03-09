@@ -4,7 +4,8 @@ This API provides a dual-layer security system for Nigerian banking:
 1. **NLP Alert Classifier**: Analyzes notification text (SMS/Email).
 2. **Backend Fraud Engine**: Analyzes transaction metadata (NIBSS patterns).
 
-**Base URL**: `http://localhost:8000`
+**Base URL (Local)**: `http://localhost:8000`  
+**Production URL**: `https://chimera-fraud-api.onrender.com`
 
 ---
 

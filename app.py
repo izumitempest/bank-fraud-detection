@@ -80,6 +80,15 @@ class TransactionResponse(BaseModel):
     risk_level: str
 
 
+@app.get("/")
+def read_root():
+    return {
+        "message": "Welcome to the Chimera Fraud Detection API",
+        "documentation": "/docs",
+        "health_check": "/health",
+    }
+
+
 @app.get("/health")
 def health_check():
     return {
