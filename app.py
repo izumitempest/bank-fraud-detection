@@ -1,60 +1,58 @@
+from typing import Optional
+import os
+
+import joblib
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any
-import joblib
-import os
-import pandas as pd
+
+from config.db import close_mongo_connection, connect_to_mongo
+from routes.report_routes import router as report_router
 
 # Base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Configuration - Alert Classifier
-ALERT_MODEL = os.path.join(BASE_DIR, "models", "alert_classifier_v2.pkl")
-ALERT_VECTORIZER = os.path.join(BASE_DIR, "models", "tfidf_vectorizer_v2.pkl")
+# Configuration
+ALERT_MODEL = os.path.join(BASE_DIR, "models", "alert_classifier_pipeline.pkl")
+FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_pipeline_v3.pkl")
 
-# Configuration - Fraud Engine (NIBSS)
-FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
-FRAUD_ENCODERS = os.path.join(BASE_DIR, "models", "fraud_engine_encoders.pkl")
-FRAUD_FEATURES = os.path.join(BASE_DIR, "models", "fraud_engine_features.pkl")
-FRAUD_THRESHOLD = 0.20  # Optimized for ~82% recall
+LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
 
 app = FastAPI(title="Chichi Fraud Detection API")
 
-# Load alert models
-if os.path.exists(ALERT_MODEL) and os.path.exists(ALERT_VECTORIZER):
-    alert_clf = joblib.load(ALERT_MODEL)
-    alert_vectorizer = joblib.load(ALERT_VECTORIZER)
-else:
-    alert_clf, alert_vectorizer = None, None
 
-# Load fraud engine models
-if (
-    os.path.exists(FRAUD_MODEL)
-    and os.path.exists(FRAUD_ENCODERS)
-    and os.path.exists(FRAUD_FEATURES)
-):
-    fraud_clf = joblib.load(FRAUD_MODEL)
-    fraud_encoders = joblib.load(FRAUD_ENCODERS)
-    fraud_features = joblib.load(FRAUD_FEATURES)
-else:
-    fraud_clf, fraud_encoders, fraud_features = None, None, None
+def _load_pipeline(path: str):
+    return joblib.load(path) if os.path.exists(path) else None
 
-# Models and Map
-LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
+
+alert_pipeline = _load_pipeline(ALERT_MODEL)
+fraud_pipeline = _load_pipeline(FRAUD_MODEL)
+
+
+@app.on_event("startup")
+def startup_event():
+    connect_to_mongo()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    close_mongo_connection()
 
 
 class AlertRequest(BaseModel):
     text: str
+    sender_id: Optional[str] = None
 
 
 class AlertResponse(BaseModel):
     text: str
+    sender_id: Optional[str] = None
     prediction: str
     label_id: int
+    confidence: float
 
 
 class TransactionRequest(BaseModel):
-    # Features required by the fraud engine
     amount: float
     hour: int
     day_of_week: int
@@ -80,6 +78,7 @@ class TransactionRequest(BaseModel):
 class TransactionResponse(BaseModel):
     is_fraud: bool
     fraud_probability: float
+    confidence: float
     risk_level: str
 
 
@@ -96,62 +95,60 @@ def read_root():
 def health_check():
     return {
         "status": "healthy",
-        "alert_classifier": "active" if alert_clf else "inactive",
-        "fraud_engine": "active" if fraud_clf else "inactive",
+        "alert_classifier": "active" if alert_pipeline else "inactive",
+        "fraud_engine": "active" if fraud_pipeline else "inactive",
+        "database": "connected",
     }
 
 
 @app.post("/predict/alert", response_model=AlertResponse)
 def predict_alert(request: AlertRequest):
-    if not alert_clf:
+    if alert_pipeline is None:
         raise HTTPException(status_code=503, detail="Alert classifier not loaded")
+
     try:
-        text_tfidf = alert_vectorizer.transform([request.text])
-        prediction_id = int(alert_clf.predict(text_tfidf)[0])
+        payload = pd.DataFrame(
+            [{"text": request.text, "sender_id": request.sender_id or ""}]
+        )
+        prediction_id = int(alert_pipeline.predict(payload)[0])
+        probabilities = alert_pipeline.predict_proba(payload)[0]
+        confidence = float(probabilities[prediction_id])
+
         return AlertResponse(
             text=request.text,
+            sender_id=request.sender_id,
             prediction=LABEL_MAP.get(prediction_id, "Unknown"),
             label_id=prediction_id,
+            confidence=confidence,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/predict/transaction", response_model=TransactionResponse)
 def predict_transaction(request: TransactionRequest):
-    if not fraud_clf:
+    if fraud_pipeline is None:
         raise HTTPException(status_code=503, detail="Fraud engine not loaded")
+
     try:
-        # Convert request to DataFrame
-        data = request.dict()
-        df = pd.DataFrame([data])
-
-        # Apply encoders
-        for col, encoder in fraud_encoders.items():
-            # Handle unseen categories by using a fallback or error
-            if df[col][0] not in encoder.classes_:
-                # For this demo, we'll just use the first class if unseen,
-                # in production we'd handle this better
-                df[col] = encoder.transform([encoder.classes_[0]])
-            else:
-                df[col] = encoder.transform(df[col])
-
-        # Ensure feature order matches training
-        df = df[fraud_features]
-
-        # Predict Probabilities
-        prob = float(fraud_clf.predict_proba(df)[0][1])
-
-        # Apply Tuned Threshold
-        is_fraud = prob >= FRAUD_THRESHOLD
-
-        risk_level = "High" if prob > 0.7 else "Medium" if prob > 0.2 else "Low"
+        payload = pd.DataFrame([request.dict()])
+        prediction = int(fraud_pipeline.predict(payload)[0])
+        probabilities = fraud_pipeline.predict_proba(payload)[0]
+        fraud_probability = float(probabilities[1])
+        confidence = float(max(probabilities))
+        risk_level = "High" if fraud_probability >= 0.8 else "Medium" if fraud_probability >= 0.5 else "Low"
 
         return TransactionResponse(
-            is_fraud=is_fraud, fraud_probability=prob, risk_level=risk_level
+            is_fraud=bool(prediction),
+            fraud_probability=fraud_probability,
+            confidence=confidence,
+            risk_level=risk_level,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+app.include_router(report_router)
 
 
 if __name__ == "__main__":
