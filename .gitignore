@@ -6,7 +6,6 @@ venv/
 .env
 
 # Datasets (Large files)
-data/*
 !data/.gitkeep
 archives/
 
@@ -15,7 +14,6 @@ archives/
 !models/*.pkl
 
 # Ignore specific large items if they exist
-nibss_fraud_dataset.zip
 *.log
 
 # IDEs
