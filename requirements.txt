@@ -7,4 +7,5 @@ uvicorn
 python-multipart
 imbalanced-learn
 xgboost
-pymongo
+supabase
+matplotlib
