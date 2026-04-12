@@ -6,7 +6,11 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from config.db import close_mongo_connection, connect_to_mongo
+from config.supabase import (
+    close_supabase_connection,
+    connect_to_supabase,
+    is_supabase_ready,
+)
 from routes.report_routes import router as report_router
 
 # Base directory
@@ -31,12 +35,12 @@ fraud_pipeline = _load_pipeline(FRAUD_MODEL)
 
 @app.on_event("startup")
 def startup_event():
-    connect_to_mongo()
+    connect_to_supabase()
 
 
 @app.on_event("shutdown")
 def shutdown_event():
-    close_mongo_connection()
+    close_supabase_connection()
 
 
 class AlertRequest(BaseModel):
@@ -97,7 +101,7 @@ def health_check():
         "status": "healthy",
         "alert_classifier": "active" if alert_pipeline else "inactive",
         "fraud_engine": "active" if fraud_pipeline else "inactive",
-        "database": "connected",
+        "database": "connected" if is_supabase_ready() else "unavailable",
     }
 
 

@@ -83,8 +83,7 @@ def build_alert_pipeline():
                 LogisticRegression(
                     max_iter=3000,
                     class_weight="balanced",
-                    solver="saga",
-                    multi_class="auto",
+                    solver="lbfgs",
                     random_state=42,
                 ),
             ),
