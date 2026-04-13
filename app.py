@@ -4,6 +4,9 @@ import os
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from config.supabase import (
@@ -24,6 +27,14 @@ LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
 
 app = FastAPI(title="Chichi Fraud Detection API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def _load_pipeline(path: str):
     return joblib.load(path) if os.path.exists(path) else None
@@ -41,6 +52,14 @@ def startup_event():
 @app.on_event("shutdown")
 def shutdown_event():
     close_supabase_connection()
+
+
+@app.exception_handler(RequestValidationError)
+def validation_exception_handler(_request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
 
 
 class AlertRequest(BaseModel):
