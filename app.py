@@ -21,7 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Configuration
 ALERT_MODEL = os.path.join(BASE_DIR, "models", "alert_classifier_pipeline.pkl")
-FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_pipeline_v3.pkl")
+FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
 
 LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
 
