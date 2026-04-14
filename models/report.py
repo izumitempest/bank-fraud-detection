@@ -1,16 +1,12 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
-
-AllowedLabel = Literal["real", "fake", "suspicious"]
-
-
 class ReportCreate(BaseModel):
     message: str = Field(..., min_length=1)
-    predicted_label: AllowedLabel
-    corrected_label: AllowedLabel
+    predicted_label: str = Field(..., min_length=1)
+    corrected_label: str = Field(..., min_length=1)
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     sender: Optional[str] = None
 

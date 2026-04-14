@@ -6,7 +6,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Configuration
-NUM_SAMPLES_PER_CATEGORY = 200
+NUM_SAMPLES_PER_CATEGORY = 350
 OUTPUT_FILE = os.path.join(BASE_DIR, "data", "alerts_dataset_v2.csv")
 
 # Banks and common data
@@ -34,6 +34,8 @@ LEGITIMATE_TEMPLATES = [
     "UBA Credit Alert: Acct: {account} Amt: {currency}{amount} Date: {date} Bal: {currency}{balance} Descr: {narration}",
     "Notification: Your {account} was credited with {currency}{amount} from {recipient}. Bal: {currency}{balance}",
     "Debit: {currency}{amount} | {account} | {date} | {narration} | Bal: {currency}{balance}",
+    "{bank} Alert: {type} {currency}{amount} {narration} Bal {currency}{balance}",
+    "{bank} {type} {currency}{amount} {date} Ref {ref}. Bal {currency}{balance}",
 ]
 
 FAKE_TEMPLATES = [
@@ -50,6 +52,8 @@ FAKE_TEMPLATES = [
     "Dear {bank} User, suspicious transacion of {currency}{amount} was noticed. If not you, cancel it here: {link}",
     "Alert: You recieved a reward of {currency}{amount} from GTB. Claim within 2hrs: {link}",
     "G-T-B-A-N-K Notification: Your mobile app session is expiring. Login to stay active: {link}",
+    "Your {bank} account is on hold. Verify now at {link} to avoid restriction.",
+    "Action required: confirm your BVN to keep account active. Link: {link}",
 ]
 
 SUSPICIOUS_TEMPLATES = [
@@ -59,6 +63,8 @@ SUSPICIOUS_TEMPLATES = [
     "Your {bank} account profile was modified on {date}. If you did not make this change, visit {link}",
     "Security Alert: Your {bank} internet banking password was changed from {location}. Contact us if not you.",
     "Alert: A new device {device} has been linked to your {bank} profile. Not you? Secure account at {link}",
+    "{bank} Notice: unusual login attempt detected. If not you, reset now: {link}",
+    "Security notice: new beneficiary added on your {bank} account. Ignore if this was you.",
 ]
 
 
@@ -136,7 +142,66 @@ def generate_random_data():
                 "KELECHI NWOSU",
             ]
         ),
+        "support": random.choice(
+            [
+                "customer care",
+                "support",
+                "helpdesk",
+                "contact center",
+            ]
+        ),
     }
+
+
+def _random_case(text: str) -> str:
+    if random.random() < 0.3:
+        return text.upper()
+    if random.random() < 0.3:
+        return text.lower()
+    return "".join(
+        ch.upper() if random.random() < 0.08 else ch for ch in text
+    )
+
+
+def _inject_punctuation(text: str) -> str:
+    if random.random() < 0.4:
+        return text.replace(" ", random.choice(["  ", " ", " | ", " - "]))
+    return text
+
+
+def _introduce_typos(text: str) -> str:
+    replacements = {
+        "account": "acount",
+        "verify": "verfy",
+        "urgent": "urgnt",
+        "login": "logn",
+        "security": "securrity",
+        "notification": "notificaton",
+        "received": "recieved",
+        "transaction": "transacion",
+    }
+    for src, tgt in replacements.items():
+        if src in text.lower() and random.random() < 0.2:
+            text = text.replace(src, tgt).replace(src.capitalize(), tgt.capitalize())
+    return text
+
+
+def _add_noise(text: str) -> str:
+    text = _random_case(text)
+    text = _inject_punctuation(text)
+    text = _introduce_typos(text)
+    if random.random() < 0.25:
+        text = f"{text} {random.choice(['pls', 'kindly', 'now', 'asap'])}"
+    return text
+
+
+def _mix_signal(text: str) -> str:
+    # Add borderline cues to reduce trivial separability
+    if random.random() < 0.2:
+        text = f"{text} If not you, call {random.choice(['customer care', 'support'])}."
+    if random.random() < 0.15:
+        text = f"{text} Do not share your OTP."
+    return text
 
 
 def create_dataset():
@@ -146,19 +211,25 @@ def create_dataset():
     for _ in range(NUM_SAMPLES_PER_CATEGORY):
         params = generate_random_data()
         template = random.choice(LEGITIMATE_TEMPLATES)
-        data.append({"text": template.format(**params), "label": 0})
+        msg = template.format(**params)
+        msg = _add_noise(_mix_signal(msg))
+        data.append({"text": msg, "label": 0})
 
     # Generate Fake (1)
     for _ in range(NUM_SAMPLES_PER_CATEGORY):
         params = generate_random_data()
         template = random.choice(FAKE_TEMPLATES)
-        data.append({"text": template.format(**params), "label": 1})
+        msg = template.format(**params)
+        msg = _add_noise(_mix_signal(msg))
+        data.append({"text": msg, "label": 1})
 
     # Generate Suspicious (2)
     for _ in range(NUM_SAMPLES_PER_CATEGORY):
         params = generate_random_data()
         template = random.choice(SUSPICIOUS_TEMPLATES)
-        data.append({"text": template.format(**params), "label": 2})
+        msg = template.format(**params)
+        msg = _add_noise(_mix_signal(msg))
+        data.append({"text": msg, "label": 2})
 
     random.shuffle(data)
 
