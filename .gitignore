@@ -6,7 +6,9 @@ venv/
 .env
 
 # Datasets (Large files)
+data/*
 !data/.gitkeep
+!data/alerts_dataset_v2.csv
 archives/
 
 # Models (Keep only necessary production models)
