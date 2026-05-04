@@ -9,21 +9,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config.supabase import (
-    close_supabase_connection,
-    connect_to_supabase,
-    is_supabase_ready,
-)
-from routes.report_routes import router as report_router
+try:
+    from config.supabase import (
+        close_supabase_connection,
+        connect_to_supabase,
+        is_supabase_ready,
+    )
+except Exception:
+    # Keep the prediction API available even if the optional database
+    # dependency is not installed in the runtime environment.
+    def connect_to_supabase():
+        return None
+
+    def close_supabase_connection():
+        return None
+
+    def is_supabase_ready():
+        return False
+
+try:
+    from routes.report_routes import router as report_router
+except Exception:
+    report_router = None
 
 # Base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Configuration
-ALERT_MODEL = os.path.join(BASE_DIR, "models", "alert_classifier_pipeline.pkl")
-FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_pipeline_v3.pkl")
-
-LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
+SMS_MODEL_BUNDLE = os.path.join(BASE_DIR, "models", "sms_xgboost.pkl")
+FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
 
 app = FastAPI(title="Chichi Fraud Detection API")
 
@@ -40,8 +54,22 @@ def _load_pipeline(path: str):
     return joblib.load(path) if os.path.exists(path) else None
 
 
-alert_pipeline = _load_pipeline(ALERT_MODEL)
+# The SMS bundle contains:
+# - preprocessor: text cleaning + TF-IDF + engineered features
+# - model: trained XGBoost classifier
+# - label_encoder: converts class IDs back to Real/Fake/Suspicious
+sms_model_bundle = _load_pipeline(SMS_MODEL_BUNDLE)
 fraud_pipeline = _load_pipeline(FRAUD_MODEL)
+
+
+def _get_sms_artifacts():
+    if not isinstance(sms_model_bundle, dict):
+        return None, None, None
+
+    preprocessor = sms_model_bundle.get("preprocessor")
+    model = sms_model_bundle.get("model")
+    label_encoder = sms_model_bundle.get("label_encoder")
+    return preprocessor, model, label_encoder
 
 
 @app.on_event("startup")
@@ -73,6 +101,7 @@ class AlertResponse(BaseModel):
     prediction: str
     label_id: int
     confidence: float
+    probabilities: dict[str, float]
 
 
 class TransactionRequest(BaseModel):
@@ -118,7 +147,7 @@ def read_root():
 def health_check():
     return {
         "status": "healthy",
-        "alert_classifier": "active" if alert_pipeline else "inactive",
+        "sms_fraud_model": "active" if sms_model_bundle else "inactive",
         "fraud_engine": "active" if fraud_pipeline else "inactive",
         "database": "connected" if is_supabase_ready() else "unavailable",
     }
@@ -126,23 +155,34 @@ def health_check():
 
 @app.post("/predict/alert", response_model=AlertResponse)
 def predict_alert(request: AlertRequest):
-    if alert_pipeline is None:
-        raise HTTPException(status_code=503, detail="Alert classifier not loaded")
+    preprocessor, sms_model, label_encoder = _get_sms_artifacts()
+    if not preprocessor or not sms_model or not label_encoder:
+        raise HTTPException(status_code=503, detail="SMS fraud model is not loaded")
 
     try:
+        # Build a one-row DataFrame so the saved preprocessing pipeline can
+        # apply the same cleaning and feature engineering used during training.
         payload = pd.DataFrame(
-            [{"text": request.text, "sender_id": request.sender_id or ""}]
+            [{"sms_text": request.text, "sender_id": request.sender_id or ""}]
         )
-        prediction_id = int(alert_pipeline.predict(payload)[0])
-        probabilities = alert_pipeline.predict_proba(payload)[0]
+
+        features = preprocessor.transform(payload)
+        prediction_id = int(sms_model.predict(features)[0])
+        probabilities = sms_model.predict_proba(features)[0]
         confidence = float(probabilities[prediction_id])
+        prediction_label = str(label_encoder.inverse_transform([prediction_id])[0])
+        probability_map = {
+            str(class_name): float(probability)
+            for class_name, probability in zip(label_encoder.classes_, probabilities)
+        }
 
         return AlertResponse(
             text=request.text,
             sender_id=request.sender_id,
-            prediction=LABEL_MAP.get(prediction_id, "Unknown"),
+            prediction=prediction_label,
             label_id=prediction_id,
             confidence=confidence,
+            probabilities=probability_map,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -171,7 +211,8 @@ def predict_transaction(request: TransactionRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-app.include_router(report_router)
+if report_router is not None:
+    app.include_router(report_router)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ venv/
 # Datasets (Large files)
 data/*
 !data/.gitkeep
+!data/alerts_dataset_v2.csv
 archives/
 
 # Models (Keep only necessary production models)
@@ -15,7 +16,6 @@ archives/
 !models/*.pkl
 
 # Ignore specific large items if they exist
-nibss_fraud_dataset.zip
 *.log
 
 # IDEs
