@@ -1,23 +1,26 @@
-from typing import Optional
+import logging
 import os
 
 import joblib
-import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Try to import Supabase utilities (optional)
 try:
     from config.supabase import (
         close_supabase_connection,
         connect_to_supabase,
         is_supabase_ready,
     )
-except Exception:
-    # Keep the prediction API available even if the optional database
-    # dependency is not installed in the runtime environment.
+except Exception as e:
+    logger.warning(f"Supabase config not available: {e}")
+
     def connect_to_supabase():
         return None
 
@@ -27,23 +30,51 @@ except Exception:
     def is_supabase_ready():
         return False
 
+
+# Try to import routers
+try:
+    from routes.prediction_routes import router as prediction_router
+except Exception as e:
+    logger.error(f"Failed to import prediction_router: {e}")
+    prediction_router = None
+
+try:
+    from routes.health_routes import router as health_router
+except Exception as e:
+    logger.error(f"Failed to import health_router: {e}")
+    health_router = None
+
 try:
     from routes.report_routes import router as report_router
-except Exception:
+except Exception as e:
+    logger.warning(f"Report router not available: {e}")
     report_router = None
 
-# Base directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+try:
+    from routes.analytics_routes import router as analytics_router
+except Exception as e:
+    logger.warning(f"Analytics router not available: {e}")
+    analytics_router = None
 
-# Configuration
+try:
+    from routes.alerts_routes import router as alerts_router
+except Exception as e:
+    logger.warning(f"Alerts router not available: {e}")
+    alerts_router = None
+
+# Base directory and model paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SMS_MODEL_BUNDLE = os.path.join(BASE_DIR, "models", "sms_xgboost.pkl")
 FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
 
-# Label mapping for SMS fraud detection
-LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
+# Initialize FastAPI app
+app = FastAPI(
+    title="Chichi Fraud Detection API",
+    description="Advanced fraud detection for SMS alerts and transactions",
+    version="1.0.0",
+)
 
-app = FastAPI(title="Chichi Fraud Detection API")
-
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -54,168 +85,67 @@ app.add_middleware(
 
 
 def _load_pipeline(path: str):
-    return joblib.load(path) if os.path.exists(path) else None
+    """Load a trained pipeline from disk."""
+    if os.path.exists(path):
+        try:
+            return joblib.load(path)
+        except Exception as e:
+            logger.error(f"Failed to load pipeline {path}: {e}")
+            return None
+    return None
 
 
-# The SMS bundle contains:
-# - preprocessor: text cleaning + TF-IDF + engineered features
-# - model: trained XGBoost classifier
-# - label_encoder: converts class IDs back to Real/Fake/Suspicious
+# Load models at startup
 sms_model_bundle = _load_pipeline(SMS_MODEL_BUNDLE)
 fraud_pipeline = _load_pipeline(FRAUD_MODEL)
 
-
-def _get_sms_artifacts():
-    if not isinstance(sms_model_bundle, dict):
-        return None, None, None
-
-    preprocessor = sms_model_bundle.get("preprocessor")
-    model = sms_model_bundle.get("model")
-    label_encoder = sms_model_bundle.get("label_encoder")
-    return preprocessor, model, label_encoder
+logger.info(f"SMS model loaded: {sms_model_bundle is not None}")
+logger.info(f"Fraud engine loaded: {fraud_pipeline is not None}")
 
 
 @app.on_event("startup")
 def startup_event():
+    """Initialize connections on app startup."""
     connect_to_supabase()
+    logger.info("Application startup complete")
 
 
 @app.on_event("shutdown")
 def shutdown_event():
+    """Clean up connections on app shutdown."""
     close_supabase_connection()
+    logger.info("Application shutdown complete")
 
 
 @app.exception_handler(RequestValidationError)
 def validation_exception_handler(_request, exc: RequestValidationError):
+    """Custom handler for validation errors."""
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors(), "body": exc.body},
     )
 
 
-class AlertRequest(BaseModel):
-    text: str
-    sender_id: Optional[str] = None
+# Include routers
+if health_router:
+    app.include_router(health_router)
+    logger.info("Health router included")
 
+if prediction_router:
+    app.include_router(prediction_router)
+    logger.info("Prediction router included")
 
-class AlertResponse(BaseModel):
-    text: str
-    sender_id: Optional[str] = None
-    prediction: str
-    label_id: int
-    confidence: float
-    probabilities: dict[str, float]
-
-
-class TransactionRequest(BaseModel):
-    amount: float
-    hour: int
-    day_of_week: int
-    month: int
-    is_weekend: bool
-    is_peak_hour: bool
-    tx_count_24h: float
-    amount_sum_24h: float
-    amount_mean_7d: float
-    amount_std_7d: float
-    tx_count_total: int
-    amount_mean_total: float
-    amount_std_total: float
-    channel_diversity: int
-    location_diversity: int
-    amount_vs_mean_ratio: float
-    online_channel_ratio: float
-    channel: str
-    merchant_category: str
-    bank: str
-
-
-class TransactionResponse(BaseModel):
-    is_fraud: bool
-    fraud_probability: float
-    confidence: float
-    risk_level: str
-
-
-@app.get("/")
-def read_root():
-    return {
-        "message": "Welcome to the Chimera Fraud Detection API",
-        "documentation": "/docs",
-        "health_check": "/health",
-    }
-
-
-@app.get("/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "sms_fraud_model": "active" if sms_model_bundle else "inactive",
-        "fraud_engine": "active" if fraud_pipeline else "inactive",
-        "database": "connected" if is_supabase_ready() else "unavailable",
-    }
-
-
-@app.post("/predict/alert", response_model=AlertResponse)
-def predict_alert(request: AlertRequest):
-    preprocessor, sms_model, label_encoder = _get_sms_artifacts()
-    if not preprocessor or not sms_model or not label_encoder:
-        raise HTTPException(status_code=503, detail="SMS fraud model is not loaded")
-
-    try:
-        # Build a one-row DataFrame so the saved preprocessing pipeline can
-        # apply the same cleaning and feature engineering used during training.
-        payload = pd.DataFrame(
-            [{"sms_text": request.text, "sender_id": request.sender_id or ""}]
-        )
-
-        features = preprocessor.transform(payload)
-        prediction_id = int(sms_model.predict(features)[0])
-        probabilities = sms_model.predict_proba(features)[0]
-        confidence = float(probabilities[prediction_id])
-        prediction_label = str(label_encoder.inverse_transform([prediction_id])[0])
-        probability_map = {
-            str(class_name): float(probability)
-            for class_name, probability in zip(label_encoder.classes_, probabilities)
-        }
-
-        return AlertResponse(
-            text=request.text,
-            sender_id=request.sender_id,
-            prediction=prediction_label,
-            label_id=prediction_id,
-            confidence=confidence,
-            probabilities=probability_map,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@app.post("/predict/transaction", response_model=TransactionResponse)
-def predict_transaction(request: TransactionRequest):
-    if fraud_pipeline is None:
-        raise HTTPException(status_code=503, detail="Fraud engine not loaded")
-
-    try:
-        payload = pd.DataFrame([request.dict()])
-        prediction = int(fraud_pipeline.predict(payload)[0])
-        probabilities = fraud_pipeline.predict_proba(payload)[0]
-        fraud_probability = float(probabilities[1])
-        confidence = float(max(probabilities))
-        risk_level = "High" if fraud_probability >= 0.8 else "Medium" if fraud_probability >= 0.5 else "Low"
-
-        return TransactionResponse(
-            is_fraud=bool(prediction),
-            fraud_probability=fraud_probability,
-            confidence=confidence,
-            risk_level=risk_level,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-if report_router is not None:
+if report_router:
     app.include_router(report_router)
+    logger.info("Report router included")
+
+if analytics_router:
+    app.include_router(analytics_router)
+    logger.info("Analytics router included")
+
+if alerts_router:
+    app.include_router(alerts_router)
+    logger.info("Alerts router included")
 
 
 if __name__ == "__main__":
