@@ -39,6 +39,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SMS_MODEL_BUNDLE = os.path.join(BASE_DIR, "models", "sms_xgboost.pkl")
 FRAUD_MODEL = os.path.join(BASE_DIR, "models", "fraud_engine_model_v3.pkl")
 
+# Label mapping for SMS fraud detection
+LABEL_MAP = {0: "Legitimate", 1: "Fake/Phishing", 2: "Suspicious"}
+
 app = FastAPI(title="Chichi Fraud Detection API")
 
 app.add_middleware(
