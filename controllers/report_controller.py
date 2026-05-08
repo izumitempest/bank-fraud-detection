@@ -42,11 +42,11 @@ def create_report(report: ReportCreate) -> dict:
     }
 
 
-def list_reports() -> list[ReportResponse]:
+def list_reports(limit: int = 50) -> list[ReportResponse]:
     supabase = get_supabase()
     try:
         response = (
-            supabase.from_("reports").select("*").order("created_at", desc=True).execute()
+            supabase.from_("reports").select("*").order("created_at", desc=True).limit(limit).execute()
         )
     except Exception as exc:
         logger.error("Supabase select failed: %s", exc, exc_info=True)

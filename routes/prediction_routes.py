@@ -132,21 +132,23 @@ def predict_alerts_batch(request: BatchAlertRequest):
         )
 
     try:
+        payload = pd.DataFrame(
+            [{"sms_text": a.text, "sender_id": a.sender_id or ""} for a in request.alerts]
+        )
+        features = preprocessor.transform(payload)
+        prediction_ids = sms_model.predict(features).tolist()
+        all_probabilities = sms_model.predict_proba(features)
+
         results = []
-        for alert_request in request.alerts:
-            payload = pd.DataFrame(
-                [{"sms_text": alert_request.text, "sender_id": alert_request.sender_id or ""}]
-            )
-            features = preprocessor.transform(payload)
-            prediction_id = int(sms_model.predict(features)[0])
-            probabilities = sms_model.predict_proba(features)[0]
+        for i, alert_request in enumerate(request.alerts):
+            prediction_id = int(prediction_ids[i])
+            probabilities = all_probabilities[i]
             confidence = float(probabilities[prediction_id])
             prediction_label = str(label_encoder.inverse_transform([prediction_id])[0])
             probability_map = {
                 str(class_name): float(probability)
                 for class_name, probability in zip(label_encoder.classes_, probabilities)
             }
-
             results.append(
                 AlertResponse(
                     text=alert_request.text,

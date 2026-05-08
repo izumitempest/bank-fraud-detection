@@ -30,5 +30,7 @@ def submit_report(report: ReportCreate):
 
 
 @router.get("/reports", response_model=list[ReportResponse])
-def get_reports():
-    return list_reports()
+def get_reports(limit: int = 50):
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    return list_reports(limit=limit)
