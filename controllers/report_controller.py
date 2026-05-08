@@ -16,8 +16,6 @@ def create_report(report: ReportCreate) -> dict:
         "predicted_label": report.predicted_label,
         "corrected_label": report.corrected_label,
         "confidence": report.confidence,
-        "sender": report.sender,
-        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     try:

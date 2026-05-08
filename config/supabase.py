@@ -59,6 +59,10 @@ class TableQuery:
             # SELECT operation
             response = self.client.get(self.url, params=self.query_params)
         
+        if response.status_code != 200:
+            print(f"DEBUG - Status: {response.status_code}")
+            print(f"DEBUG - Response: {response.text}")
+        
         response.raise_for_status()
         return SupabaseResponse(response.json())
 
